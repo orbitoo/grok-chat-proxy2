@@ -5,6 +5,7 @@
 userdata
 lastPrompt.txt
 cookies
+response.txt
 
 # Binaries for programs and plugins
 *.exe

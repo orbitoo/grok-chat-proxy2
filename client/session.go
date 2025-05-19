@@ -225,7 +225,6 @@ el.click();
 }
 
 func (s *Session) listenForResponse(responseChan chan string, listenCtx context.Context) error {
-	defer close(responseChan)
 	listenURL := "https://grok.com/rest/app-chat/conversations"
 	log.Printf("Listening for response at %s", listenURL)
 
@@ -236,10 +235,12 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 	// FIXME: this is a workaround, the correct way is to make this channel one-time usable
 	// which means once someone sends a message, the channel is closed
 	done := make(chan error, 3)
+	defer close(done)
 	head := false
 	timer := time.NewTimer(TIMEOUT)
 	defer timer.Stop()
 	dataChannel := make(chan string, 20)
+	defer close(dataChannel)
 	processCtx, cancelProcess := context.WithCancel(listenCtx)
 	defer cancelProcess()
 	wg := sync.WaitGroup{}
@@ -322,12 +323,14 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 		case err := <-done:
 			if err != nil {
 				log.Printf("ListenForResponse completed with error: %v", err)
+				cancelProcess()
+				wg.Wait()
 				return err
+			} else {
+				cancelProcess()
+				wg.Wait()
+				return nil
 			}
-			cancelProcess()
-			wg.Wait()
-			close(dataChannel)
-			return nil
 		case <-timer.C:
 			muId.Lock()
 			predication := !requestIDFound
@@ -339,9 +342,12 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 			}
 		case <-listenCtx.Done():
 			wg.Wait()
-			close(dataChannel)
 			log.Printf("ListenForResponse cancelled by parent context before timeout or completion.")
 			return listenCtx.Err()
+		case <-processCtx.Done():
+			wg.Wait()
+			log.Printf("Finished processing data.")
+			return nil
 		}
 	}
 }
@@ -380,6 +386,7 @@ func (s *Session) Close() {
 
 func ProcessData(dataChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
 	lineChannel := make(chan string, 20)
+	defer close(lineChannel)
 	go ParseData(lineChannel, ctx, cancel, responseChan)
 	for data := range dataChannel {
 		bytes, err := utils.Base64Decode(data)
@@ -390,33 +397,38 @@ func ProcessData(dataChannel chan string, ctx context.Context, cancel context.Ca
 		for _, line := range strings.Split(string(*bytes), "\n") {
 			select {
 			case <-ctx.Done():
-				close(lineChannel)
 				return
 			case lineChannel <- line:
 			}
 		}
 	}
-	close(lineChannel)
 }
 
 func ParseData(lineChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
+	defer close(responseChan)
+	defer cancel()
 	think := false
 	thinkTag := "<think>"
+	var file bool
+	f, err := os.OpenFile("./response.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Failed to open file: %v", err)
+		log.Printf("Processing data without file output.")
+	} else {
+		defer f.Close()
+		file = true
+	}
 	for line := range lineChannel {
 		line = strings.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
-		f, err := os.OpenFile("./response.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Printf("Failed to open file: %v", err)
-			continue
+		if file {
+			if _, err := f.WriteString(line + "\n"); err != nil {
+				log.Printf("Failed to write to file: %v", err)
+				file = false
+			}
 		}
-		if _, err := f.WriteString(line + "\n"); err != nil {
-			log.Printf("Failed to write to file: %v", err)
-			continue
-		}
-		f.Close()
 		response, _ := utils.ParseGrokResponse(line)
 		if response == nil {
 			continue
@@ -436,11 +448,7 @@ func ParseData(lineChannel chan string, ctx context.Context, cancel context.Canc
 		}
 		if response.IsSoftStop {
 			fmt.Println()
-			cancel()
-			log.Printf("Finished processing data, cancelling context.")
 			return
 		}
 	}
-	cancel()
-	log.Printf("Error processing data, cancelling context.")
 }
