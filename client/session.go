@@ -288,7 +288,6 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 						select {
 						case dataChannel <- event.Data:
 						case <-processCtx.Done():
-							<-processExit
 							return
 						}
 					} else {
