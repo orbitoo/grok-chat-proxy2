@@ -240,7 +240,6 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 	timer := time.NewTimer(TIMEOUT)
 	defer timer.Stop()
 	dataChannel := make(chan string, 20)
-	defer close(dataChannel)
 	processExit := make(chan bool, 1)
 	defer close(processExit)
 	processCtx, cancelProcess := context.WithCancel(listenCtx)
@@ -286,9 +285,9 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 					if head {
 						muId.Unlock()
 						select {
-						case dataChannel <- event.Data:
 						case <-processCtx.Done():
 							return
+						case dataChannel <- event.Data:
 						}
 					} else {
 						head = true
@@ -324,6 +323,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 				log.Printf("ListenForResponse completed with error: %v", err)
 				return err
 			}
+			close(dataChannel)
 			cancelProcess()
 			<-processExit
 			return nil
@@ -337,6 +337,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 				return errors.New(errMsg)
 			}
 		case <-listenCtx.Done():
+			close(dataChannel)
 			<-processExit
 			log.Printf("ListenForResponse cancelled by parent context before timeout or completion.")
 			return listenCtx.Err()
@@ -389,8 +390,8 @@ func ProcessData(dataChannel chan string, ctx context.Context, cancel context.Ca
 		for _, line := range strings.Split(string(*bytes), "\n") {
 			select {
 			case <-ctx.Done():
-				<-parseExit
 				close(lineChannel)
+				<-parseExit
 				processExit <- true
 				return
 			case lineChannel <- line:
@@ -398,6 +399,8 @@ func ProcessData(dataChannel chan string, ctx context.Context, cancel context.Ca
 		}
 	}
 	close(lineChannel)
+	<-parseExit
+	processExit <- true
 }
 
 func ParseData(lineChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string, parseExit chan bool) {
@@ -431,10 +434,10 @@ func ParseData(lineChannel chan string, ctx context.Context, cancel context.Canc
 		delta += response.Token
 		fmt.Print(delta)
 		select {
-		case responseChan <- delta:
 		case <-ctx.Done():
 			parseExit <- true
 			return
+		case responseChan <- delta:
 		}
 		if response.IsSoftStop {
 			fmt.Println()
