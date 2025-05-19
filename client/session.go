@@ -241,6 +241,8 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 	defer timer.Stop()
 	dataChannel := make(chan string, 20)
 	defer close(dataChannel)
+	processExit := make(chan bool, 1)
+	defer close(processExit)
 	processCtx, cancelProcess := context.WithCancel(listenCtx)
 	defer cancelProcess()
 	chromedp.ListenTarget(listenCtx, func(event interface{}) {
@@ -272,7 +274,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 					}
 				}()
 
-				go ProcessData(dataChannel, processCtx, cancelProcess, responseChan)
+				go ProcessData(dataChannel, processCtx, cancelProcess, responseChan, processExit)
 			}
 		case *network.EventDataReceived:
 			muId.Lock()
@@ -286,6 +288,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 						select {
 						case dataChannel <- event.Data:
 						case <-processCtx.Done():
+							<-processExit
 							return
 						}
 					} else {
@@ -322,7 +325,8 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 				log.Printf("ListenForResponse completed with error: %v", err)
 				return err
 			}
-			<-processCtx.Done()
+			cancelProcess()
+			<-processExit
 			return nil
 		case <-timer.C:
 			muId.Lock()
@@ -334,6 +338,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 				return errors.New(errMsg)
 			}
 		case <-listenCtx.Done():
+			<-processExit
 			log.Printf("ListenForResponse cancelled by parent context before timeout or completion.")
 			return listenCtx.Err()
 		}
@@ -372,9 +377,10 @@ func (s *Session) Close() {
 	log.Printf("Session %d closed.", s.id)
 }
 
-func ProcessData(dataChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
+func ProcessData(dataChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string, processExit chan bool) {
 	lineChannel := make(chan string, 20)
-	go ParseData(lineChannel, ctx, cancel, responseChan)
+	parseExit := make(chan bool, 1)
+	go ParseData(lineChannel, ctx, cancel, responseChan, parseExit)
 	for data := range dataChannel {
 		bytes, err := utils.Base64Decode(data)
 		if err != nil {
@@ -384,16 +390,18 @@ func ProcessData(dataChannel chan string, ctx context.Context, cancel context.Ca
 		for _, line := range strings.Split(string(*bytes), "\n") {
 			select {
 			case <-ctx.Done():
+				<-parseExit
 				close(lineChannel)
+				processExit <- true
 				return
 			case lineChannel <- line:
 			}
 		}
 	}
-
+	close(lineChannel)
 }
 
-func ParseData(lineChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
+func ParseData(lineChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string, parseExit chan bool) {
 	think := false
 	thinkTag := "<think>"
 	for line := range lineChannel {
@@ -406,11 +414,11 @@ func ParseData(lineChannel chan string, ctx context.Context, cancel context.Canc
 			log.Printf("Failed to open file: %v", err)
 			continue
 		}
-		defer f.Close()
 		if _, err := f.WriteString(line + "\n"); err != nil {
 			log.Printf("Failed to write to file: %v", err)
 			continue
 		}
+		f.Close()
 		response, _ := utils.ParseGrokResponse(line)
 		if response == nil {
 			continue
@@ -426,15 +434,18 @@ func ParseData(lineChannel chan string, ctx context.Context, cancel context.Canc
 		select {
 		case responseChan <- delta:
 		case <-ctx.Done():
+			parseExit <- true
 			return
 		}
 		if response.IsSoftStop {
 			fmt.Println()
+			parseExit <- true
 			cancel()
 			log.Printf("Finished processing data, cancelling context.")
 			return
 		}
 	}
+	parseExit <- true
 	cancel()
 	log.Printf("Error processing data, cancelling context.")
 }
