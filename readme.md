@@ -6,6 +6,7 @@ A reverse proxy server that adapts [Grok Chat](https://grok.com/) to comply with
 
 - OpenAI API compatible interface to Grok AI
 - Support for both regular mode and "think" mode
+- Support (partially) for the DeepSearch and DeeperSearch mode
 - File upload support for large prompts
 - Multiple browser session management for concurrent requests
 - Optional API key authentication
