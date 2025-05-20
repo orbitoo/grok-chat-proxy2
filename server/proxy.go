@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-var callGrok func(prompt string, think bool, responseChan chan string) (context.CancelFunc, error)
-var callGrokUsingFile func(prompt string, filename string, think bool, responseChan chan string) (context.CancelFunc, error)
+var callGrok func(model string, prompt *string, responseChan chan string) (context.CancelFunc, error)
+var callGrokUsingFile func(model string, prompt *string, filename string, responseChan chan string) (context.CancelFunc, error)
 var expectedAPIKey string
 var MAX_PROMPT_LENGTH = 40000
 
@@ -49,8 +49,7 @@ func ChatCompletionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	requestID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
 	modelName := request.Model
-	// possibleModels := []string{"grok-3", "grok-3-think"}
-	if modelName != "grok-3" && modelName != "grok-3-think" {
+	if modelName != "grok-3" && modelName != "grok-3-think" && modelName != "grok-3-deepsearch" && modelName != "grok-3-deepersearch" {
 		errMsg := fmt.Sprintf("Unsupported model: %s", modelName)
 		http.Error(w, errMsg, http.StatusBadRequest)
 		log.Println(errMsg)
@@ -84,9 +83,9 @@ func ChatCompletionHandler(w http.ResponseWriter, r *http.Request) {
 	var allocErr error
 	var cancelFunc context.CancelFunc
 	if len(prompt) > MAX_PROMPT_LENGTH {
-		cancelFunc, allocErr = callGrokUsingFile("", filepath, modelName == "grok-3-think", responseChan)
+		cancelFunc, allocErr = callGrokUsingFile(modelName, &prompt, filepath, responseChan)
 	} else {
-		cancelFunc, allocErr = callGrok(prompt, modelName == "grok-3-think", responseChan)
+		cancelFunc, allocErr = callGrok(modelName, &prompt, responseChan)
 	}
 	if allocErr != nil {
 		errMsg := fmt.Sprintf("Failed to allocate session: %v", allocErr)
@@ -161,8 +160,8 @@ func endStream(w http.ResponseWriter, flusher http.Flusher) error {
 	return nil
 }
 
-func ConfigureGrokAPI(apiFunc func(prompt string, think bool, responseChan chan string) (context.CancelFunc, error),
-	apiFuncUsingFile func(prompt string, filename string, think bool, responseChan chan string) (context.CancelFunc, error)) {
+func ConfigureGrokAPI(apiFunc func(model string, prompt *string, responseChan chan string) (context.CancelFunc, error),
+	apiFuncUsingFile func(model string, prompt *string, filename string, responseChan chan string) (context.CancelFunc, error)) {
 	callGrok = apiFunc
 	callGrokUsingFile = apiFuncUsingFile
 }
@@ -176,7 +175,7 @@ func ListModelsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only GET method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	models := []string{"grok-3", "grok-3-think"}
+	models := []string{"grok-3", "grok-3-think", "grok-3-deepsearch", "grok-3-deepersearch"}
 	modelList := utils.ModelList(models)
 	responseData, err := json.Marshal(modelList)
 	if err != nil {

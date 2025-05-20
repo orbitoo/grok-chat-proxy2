@@ -42,11 +42,11 @@ func main() {
 		sm = client.NewSessionManager(headlessFlag, privateFlag)
 	}
 	defer sm.Close()
-	grokAPI := func(prompt string, think bool, responseChan chan string) (context.CancelFunc, error) {
-		return sm.SendMessage(&prompt, nil, think, responseChan)
+	grokAPI := func(model string, prompt *string, responseChan chan string) (context.CancelFunc, error) {
+		return sm.SendMessage(model, prompt, nil, responseChan)
 	}
-	grokAPIUsingFile := func(prompt string, filename string, think bool, responseChan chan string) (context.CancelFunc, error) {
-		return sm.SendMessage(&prompt, &filename, think, responseChan)
+	grokAPIUsingFile := func(model string, prompt *string, filename string, responseChan chan string) (context.CancelFunc, error) {
+		return sm.SendMessage(model, prompt, &filename, responseChan)
 	}
 	server.ConfigureGrokAPI(grokAPI, grokAPIUsingFile)
 	server.ConfigureExpectedAPIKey(token)

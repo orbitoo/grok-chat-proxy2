@@ -47,7 +47,7 @@ func formatPrompt(msgs []Message, roleMap map[string]string) string {
 var roleMap = map[string]string{
 	"user":      "human",
 	"assistant": "assistant",
-	"system":    "user",
+	"system":    "system",
 }
 
 func Base64Decode(input string) (*[]byte, error) {

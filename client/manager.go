@@ -116,7 +116,7 @@ func NewSessionManagerWithCookie(cookieList []string, headless bool, private boo
 	return &SessionManager{sessions: sessions, nextAvailable: nextAvailable, private: private}
 }
 
-func (sm *SessionManager) SendMessage(prompt *string, filename *string, think bool, responseChan chan string) (context.CancelFunc, error) {
+func (sm *SessionManager) SendMessage(model string, prompt *string, filename *string, responseChan chan string) (context.CancelFunc, error) {
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	var session *Session
@@ -136,7 +136,7 @@ func (sm *SessionManager) SendMessage(prompt *string, filename *string, think bo
 	}
 	listenCtx, cancelListen := context.WithCancel(*session.ctx)
 	go func() {
-		err := session.SendMessage(prompt, filename, sm.private, think, responseChan, listenCtx, cancelListen)
+		err := session.SendMessage(model, prompt, filename, sm.private, responseChan, listenCtx, cancelListen)
 		if err != nil {
 			log.Printf("Failed to send message: %v", err)
 			sm.nextAvailable <- session

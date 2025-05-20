@@ -14,10 +14,12 @@ type grokResult struct {
 }
 
 type grokResponse struct {
-	Token      string `json:"token"`
-	IsThinking bool   `json:"isThinking"`
-	IsSoftStop bool   `json:"isSoftStop"`
-	ResponseId string `json:"responseId"`
+	Token         string `json:"token"`
+	IsThinking    bool   `json:"isThinking"`
+	IsSoftStop    bool   `json:"isSoftStop"`
+	MessageTag    string `json:"messageTag"`
+	MessageStepId int    `json:"messageStepId"`
+	ResponseId    string `json:"responseId"`
 }
 
 func ParseGrokResponse(data string) (*grokResponse, error) {

@@ -167,13 +167,32 @@ func (s *Session) navigateToHomepage() error {
 	return nil
 }
 
-func (s *Session) sendPrompt(prompt *string, filename *string, private bool, think bool, cancelListen context.CancelFunc) error {
-	grokInputSelector := `textarea[dir="auto"]`
-	grokSendButtonSelector := `button[type="submit"]`
-	grokPrivateButtonSelector := `a[type="button"]`
-	grokThinkButtonSelector := `button[aria-label="Think"]`
-	grokInputFileSelector := `input[type="file"]`
-	jsSetValueTemplate := `(function (){
+var jsRobustClickTemplate = `(function (){
+	let element = document.querySelector('%s');
+    const rect = element.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    const commonEventProps = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: clientX,
+        clientY: clientY,
+    };
+    const pointerDownEvent = new PointerEvent('pointerdown', { ...commonEventProps, button: 0, buttons: 1, pointerId: 1, isPrimary: true });
+    const mouseDownEvent = new MouseEvent('mousedown', { ...commonEventProps, button: 0, buttons: 1 });
+    const pointerUpEvent = new PointerEvent('pointerup', { ...commonEventProps, button: 0, buttons: 0, pointerId: 1, isPrimary: true });
+    const mouseUpEvent = new MouseEvent('mouseup', { ...commonEventProps, button: 0, buttons: 0 });
+    const clickEvent = new MouseEvent('click', { ...commonEventProps, button: 0, buttons: 0 }); 
+    element.dispatchEvent(pointerDownEvent);
+    element.dispatchEvent(mouseDownEvent);
+    element.dispatchEvent(pointerUpEvent);
+    element.dispatchEvent(mouseUpEvent);
+    element.dispatchEvent(clickEvent);
+    return true;
+})();
+`
+var jsSetValueTemplate = `(function (){
 let el = document.querySelector('%s');
 let descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
 let prompt = %s;
@@ -182,10 +201,23 @@ let event = new Event('input', { bubbles: true });
 el.dispatchEvent(event);
 })();
 `
-	jsClickTemplate := `(function (){
+var jsClickTemplate = `(function (){
 let el = document.querySelector('%s');
 el.click();
-})();`
+})();
+`
+var (
+	grokInputSelector              = `textarea[dir="auto"]`
+	grokSendButtonSelector         = `button[type="submit"]`
+	grokPrivateButtonSelector      = `a[type="button"]`
+	grokThinkButtonSelector        = `button[aria-label="Think"]`
+	grokInputFileSelector          = `input[type="file"]`
+	grokDeepSearchButtonSelector   = `button[aria-label="DeepSearch"]`
+	grokExpandButtonSelector       = `div.rounded-full button:nth-of-type(2)`
+	grokDeeperSearchButtonSelector = `div[aria-label="DeeperSearch"]`
+)
+
+func (s *Session) sendPrompt(model string, prompt *string, filename *string, private bool, cancelListen context.CancelFunc) error {
 	jsonPrompt, err := json.Marshal(*prompt)
 	if err != nil {
 		log.Printf("Failed to marshal prompt: %v", err)
@@ -208,10 +240,23 @@ el.click();
 		tasks = append(tasks, chromedp.WaitVisible(grokPrivateButtonSelector, chromedp.ByQuery))
 		tasks = append(tasks, chromedp.EvaluateAsDevTools(clickPrivateButton, nil))
 	}
-	if think {
+	if strings.HasSuffix(model, "think") {
 		clickThinkButton := fmt.Sprintf(jsClickTemplate, grokThinkButtonSelector)
 		tasks = append(tasks, chromedp.WaitVisible(grokThinkButtonSelector, chromedp.ByQuery))
 		tasks = append(tasks, chromedp.EvaluateAsDevTools(clickThinkButton, nil))
+	}
+	if strings.HasSuffix(model, "deepsearch") {
+		clickDeepSearchButton := fmt.Sprintf(jsClickTemplate, grokDeepSearchButtonSelector)
+		tasks = append(tasks, chromedp.WaitVisible(grokPrivateButtonSelector, chromedp.ByQuery))
+		tasks = append(tasks, chromedp.EvaluateAsDevTools(clickDeepSearchButton, nil))
+	}
+	if strings.HasSuffix(model, "deepersearch") {
+		clickExpandButton := fmt.Sprintf(jsRobustClickTemplate, grokExpandButtonSelector)
+		clickDeeperSearchButton := fmt.Sprintf(jsClickTemplate, grokDeeperSearchButtonSelector)
+		tasks = append(tasks, chromedp.WaitVisible(grokExpandButtonSelector, chromedp.ByQuery))
+		tasks = append(tasks, chromedp.EvaluateAsDevTools(clickExpandButton, nil))
+		tasks = append(tasks, chromedp.WaitVisible(grokDeeperSearchButtonSelector, chromedp.ByQuery))
+		tasks = append(tasks, chromedp.EvaluateAsDevTools(clickDeeperSearchButton, nil))
 	}
 	tasks = append(tasks, chromedp.WaitEnabled(grokSendButtonSelector, chromedp.ByQuery))
 	tasks = append(tasks, chromedp.EvaluateAsDevTools(clickSendButton, nil))
@@ -224,7 +269,7 @@ el.click();
 	return nil
 }
 
-func (s *Session) listenForResponse(responseChan chan string, listenCtx context.Context) error {
+func (s *Session) listenForResponse(model string, responseChan chan string, listenCtx context.Context) error {
 	listenURL := "https://grok.com/rest/app-chat/conversations"
 	log.Printf("Listening for response at %s", listenURL)
 
@@ -244,6 +289,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 	processCtx, cancelProcess := context.WithCancel(listenCtx)
 	defer cancelProcess()
 	wg := sync.WaitGroup{}
+	go ProcessData(model, dataChannel, processCtx, cancelProcess, responseChan)
 	chromedp.ListenTarget(listenCtx, func(event interface{}) {
 		if listenCtx.Err() != nil {
 			return
@@ -272,8 +318,6 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 						done <- err
 					}
 				}()
-
-				go ProcessData(dataChannel, processCtx, cancelProcess, responseChan)
 			}
 		case *network.EventDataReceived:
 			muId.Lock()
@@ -338,6 +382,8 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 			if predication {
 				errMsg := fmt.Sprintf("Timeout waiting for response after %v seconds", TIMEOUT.Seconds())
 				log.Println(errMsg)
+				cancelProcess()
+				wg.Wait()
 				return errors.New(errMsg)
 			}
 		case <-listenCtx.Done():
@@ -352,7 +398,7 @@ func (s *Session) listenForResponse(responseChan chan string, listenCtx context.
 	}
 }
 
-func (s *Session) SendMessage(prompt *string, filename *string, private bool, think bool, responseChan chan string, listenCtx context.Context, cancelListen context.CancelFunc) error {
+func (s *Session) SendMessage(model string, prompt *string, filename *string, private bool, responseChan chan string, listenCtx context.Context, cancelListen context.CancelFunc) error {
 	err := s.navigateToHomepage()
 	if err != nil {
 		log.Printf("Failed to navigate to homepage: %v", err)
@@ -360,10 +406,10 @@ func (s *Session) SendMessage(prompt *string, filename *string, private bool, th
 	}
 	ch := make(chan error, 1)
 	go func() {
-		err := s.listenForResponse(responseChan, listenCtx)
+		err := s.listenForResponse(model, responseChan, listenCtx)
 		ch <- err
 	}()
-	err = s.sendPrompt(prompt, filename, private, think, cancelListen)
+	err = s.sendPrompt(model, prompt, filename, private, cancelListen)
 	if err != nil {
 		log.Printf("Failed to send prompt: %v", err)
 		return err
@@ -384,10 +430,14 @@ func (s *Session) Close() {
 	log.Printf("Session %d closed.", s.id)
 }
 
-func ProcessData(dataChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
+func ProcessData(model string, dataChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
 	lineChannel := make(chan string, 20)
 	defer close(lineChannel)
-	go ParseData(lineChannel, ctx, cancel, responseChan)
+	if strings.HasSuffix(model, "search") {
+		go ParseDataDeepSearch(lineChannel, ctx, cancel, responseChan)
+	} else {
+		go ParseData(lineChannel, ctx, cancel, responseChan)
+	}
 	for data := range dataChannel {
 		bytes, err := utils.Base64Decode(data)
 		if err != nil {
@@ -410,7 +460,7 @@ func ParseData(lineChannel chan string, ctx context.Context, cancel context.Canc
 	think := false
 	thinkTag := "<think>"
 	var file bool
-	f, err := os.OpenFile("./response.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile("./response.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Printf("Failed to open file: %v", err)
 		log.Printf("Processing data without file output.")
@@ -438,6 +488,59 @@ func ParseData(lineChannel chan string, ctx context.Context, cancel context.Canc
 			delta += fmt.Sprintf("\n%s\n", thinkTag)
 			think = !think
 			thinkTag = "</think>"
+		}
+		delta += response.Token
+		fmt.Print(delta)
+		select {
+		case <-ctx.Done():
+			return
+		case responseChan <- delta:
+		}
+		if response.IsSoftStop {
+			fmt.Println()
+			return
+		}
+	}
+}
+
+func ParseDataDeepSearch(lineChannel chan string, ctx context.Context, cancel context.CancelFunc, responseChan chan string) {
+	defer close(responseChan)
+	defer cancel()
+	tag := "<research>"
+	inResearch := false
+	inFinal := false
+	var file bool
+	f, err := os.OpenFile("./response.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Printf("Failed to open file: %v", err)
+		log.Printf("Processing data without file output.")
+	} else {
+		defer f.Close()
+		file = true
+	}
+	for line := range lineChannel {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		if file {
+			if _, err := f.WriteString(line + "\n"); err != nil {
+				log.Printf("Failed to write to file: %v", err)
+				file = false
+			}
+		}
+		response, _ := utils.ParseGrokResponse(line)
+		if response == nil {
+			continue
+		}
+		delta := ""
+		if !inResearch {
+			delta += fmt.Sprintf("\n%s\n", tag)
+			inResearch = true
+		}
+		if !inFinal && response.MessageTag == "final" {
+			delta += fmt.Sprintf("\n</%s>\n", tag)
+			inFinal = true
 		}
 		delta += response.Token
 		fmt.Print(delta)
