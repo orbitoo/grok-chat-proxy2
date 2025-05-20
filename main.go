@@ -16,21 +16,31 @@ import (
 
 func main() {
 	fmt.Println("hello world")
+	var cookiesFlag bool
+	flag.BoolVar(&cookiesFlag, "s", false, "Use `cookies` file to start sessions and login automatically")
 	var headlessFlag bool
 	flag.BoolVar(&headlessFlag, "h", false, "Run in headless mode, you will not see the browser (in this case, wait flag is ignored)")
-	var privateFlag bool
-	flag.BoolVar(&privateFlag, "p", false, "Use private mode")
 	var token string
 	flag.StringVar(&token, "i", "", "Identify token (api key)")
+	var sessionNumber int
+	flag.IntVar(&sessionNumber, "n", 0, "Number of sessions to create")
+	var privateFlag bool
+	flag.BoolVar(&privateFlag, "p", false, "Use private mode")
 	var port int
 	flag.IntVar(&port, "port", 9867, "Port to listen on")
 	flag.Parse()
 	var sm *client.SessionManager
-	cookies, err := utils.ReadCookies()
-	if err != nil {
-		log.Fatalf("Failed to read cookies: %v", err)
+	if cookiesFlag {
+		cookies, err := utils.ReadCookies()
+		if err != nil {
+			log.Fatalf("Failed to read cookies: %v", err)
+		}
+		sm = client.NewSessionManagerWithCookie(cookies, headlessFlag, privateFlag)
+	} else if sessionNumber > 0 {
+		sm = client.NewSessionManagerN(sessionNumber, headlessFlag, privateFlag)
+	} else {
+		sm = client.NewSessionManager(headlessFlag, privateFlag)
 	}
-	sm = client.NewSessionManagerWithCookie(cookies, headlessFlag, privateFlag)
 	defer sm.Close()
 	grokAPI := func(prompt string, think bool, responseChan chan string) (context.CancelFunc, error) {
 		return sm.SendMessage(&prompt, nil, think, responseChan)

@@ -26,10 +26,6 @@ chmod +x app-linux-amd64
 
 ## Usage
 
-> **IMPORTANT**: You need to create a `cookies` file in the same directory as the executable.
-> This file contains the cookies for your Grok account, and every line is one account. (This relates to the number of sessions you can have.)
-> You can get the cookies by logging into Grok and copying them from your browser's developer tools (F12).
-
 Assuming the executable is named `app-windows-amd64.exe`, go to the directory where the file is located and run:
 
 ```bash
@@ -38,15 +34,54 @@ Assuming the executable is named `app-windows-amd64.exe`, go to the directory wh
 
 Here available options are:
 
+- `-c`: Use cookies to log in (See [Use Cookies](#use-cookies))
 - `-p`: Use private mode (grok chat will not save your conversations)
 - `-h`: Use headless mode (browser will not be visible)
 - `-i <api-key>`: Set API key for authentication
+- `-n <number>`: Set the number of sessions you want to use and log in manually (See [Manual Login](#manual-login))
 - `-port <port>`: Set the server port (default: 9867)
 
 I suggest that you use normal mode for the first time to check if there's cloudflare protection and pass it manually. If you are not coming into any issues, you can use the headless mode.
 
+> If you call `./app-windows-amd64.exe -c -n <number>`, it will refer to the `cookies` file and ignore the `-n` option.
+
+### Use Cookies
+
+To get the cookies:
+1. Go to [Grok Chat](https://grok.com)
+2. Press F12 to open the developer tools and switch to the "Network" tab
+3. Refresh the page and look for a request named `grok.com`
+4. Click on it and copy the cookies from the "Request Headers" section
+5. Now, create a file named `cookies` in the same directory as the executable
+6. Paste the cookies into the file, one line for one account
+7. Save the file
+
+```bash
+./app-windows-amd64.exe -c
+```
+
+This will use the cookies from the `cookies` file to log in automatically and the number of sessions will be the same as the number of lines in the `cookies` file.
+
+### Manual Login
+
+If you don't want to use cookies, you can log in manually, and the browser will save the cookies for you.
+To do this, you need to use `-n <number>` option to set the number of sessions you want to use.
+
+For example, if you want to use 2 sessions, run the following command:
+
+```bash
+./app-windows-amd64.exe -n 2
+```
+
+Then, there will be 2 browser windows opened, and you need to log in to each of them. After logging in, the cookies will be saved to `userdata` folder automatically.
+
+### Once you logged in (manually or using cookies)
+
+In the future, you can start the proxy without the `-n` or `-c` option, and it will use the saved user data.
+
 ## Limitations
 
+- Need chrome
 - Only streaming mode is supported
 - Only text responses are supported (no image generation)
 - Large prompts may be slower as they require file uploads

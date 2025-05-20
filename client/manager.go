@@ -59,7 +59,7 @@ func NewSessionManager(headless bool, private bool) *SessionManager {
 	return &SessionManager{sessions: sessions, nextAvailable: nextAvailable, private: private}
 }
 
-func NewSessionManagerN(n int, private bool) *SessionManager {
+func NewSessionManagerN(n int, headless bool, private bool) *SessionManager {
 	sessions := make(map[int]*Session)
 	ch := make(chan *Session)
 	wg := sync.WaitGroup{}
@@ -68,7 +68,7 @@ func NewSessionManagerN(n int, private bool) *SessionManager {
 	for i := range n {
 		go func(i int) {
 			defer wg.Done()
-			session, err := StartSession(i, false)
+			session, err := StartSession(i, headless)
 			if err != nil {
 				log.Printf("Failed to start session %d: %v", i, err)
 				return
