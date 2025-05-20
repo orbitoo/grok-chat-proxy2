@@ -537,9 +537,10 @@ func ParseDataDeepSearch(lineChannel chan string, ctx context.Context, cancel co
 		if !inResearch {
 			delta += fmt.Sprintf("\n%s\n", tag)
 			inResearch = true
+			tag = "</research>"
 		}
 		if !inFinal && response.MessageTag == "final" {
-			delta += fmt.Sprintf("\n</%s>\n", tag)
+			delta += fmt.Sprintf("\n%s\n", tag)
 			inFinal = true
 		}
 		delta += response.Token
