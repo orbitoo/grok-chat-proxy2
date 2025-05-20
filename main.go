@@ -17,7 +17,7 @@ import (
 func main() {
 	fmt.Println("hello world")
 	var cookiesFlag bool
-	flag.BoolVar(&cookiesFlag, "s", false, "Use `cookies` file to start sessions and login automatically")
+	flag.BoolVar(&cookiesFlag, "c", false, "Use `cookies` file to start sessions and login automatically")
 	var headlessFlag bool
 	flag.BoolVar(&headlessFlag, "h", false, "Run in headless mode, you will not see the browser (in this case, wait flag is ignored)")
 	var token string
