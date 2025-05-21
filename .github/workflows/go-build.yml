@@ -17,6 +17,9 @@ jobs:
         target:
           - { goos: linux, goarch: amd64, runner: ubuntu-latest, name_suffix: "linux-amd64" }
           - { goos: windows, goarch: amd64, runner: windows-latest, name_suffix: "windows-amd64", exe_suffix: ".exe" }
+          - { goos: darwin, goarch: amd64, runner: macos-latest, name_suffix: "darwin-amd64" }
+          - { goos: darwin, goarch: arm64, runner: macos-latest, name_suffix: "darwin-arm64" }
+          - { goos: linux, goarch: arm64, runner: ubuntu-latest, name_suffix: "linux-arm64" }
 
     runs-on: ${{ matrix.target.runner }}
 
@@ -41,7 +44,7 @@ jobs:
         run: |
           output_name="app-${{ matrix.target.name_suffix }}${{ matrix.target.exe_suffix }}"
           echo "Building $output_name..."
-          go build -v -o "$output_name" main.go
+          go build -v -ldflags="-s -w" -o "$output_name" main.go
 
       - name: Upload ${{ matrix.target.name_suffix }} artifact
         uses: actions/upload-artifact@v4

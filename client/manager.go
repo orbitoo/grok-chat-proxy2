@@ -21,7 +21,9 @@ func NewSessionManager(headless bool, private bool) *SessionManager {
 	files, err := os.ReadDir("./userdata")
 	if err != nil {
 		log.Printf("Failed to read userdata directory: %v", err)
-		log.Fatal("This means you should use `-n <number>` to start <number> sessions")
+		log.Printf("This means you should use `-n <number>` to start <number> sessions")
+		log.Printf("We will create 1 session for you.")
+		return NewSessionManagerN(1, headless, private)
 	}
 	ch := make(chan *Session)
 	wg := sync.WaitGroup{}

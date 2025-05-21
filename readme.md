@@ -46,6 +46,12 @@ I suggest that you use normal mode for the first time to check if there's cloudf
 
 > If you call `./app-windows-amd64.exe -c -n <number>`, it will refer to the `cookies` file and ignore the `-n` option.
 
+### By Default
+
+By default, just run the executable without any options for the first time,
+and it will open a browser window for you to log in.
+After logging in, the cookies will be saved to `userdata` folder automatically.
+
 ### Use Cookies
 
 To get the cookies:
@@ -63,7 +69,10 @@ To get the cookies:
 
 This will use the cookies from the `cookies` file to log in automatically and the number of sessions will be the same as the number of lines in the `cookies` file.
 
-### Manual Login
+### Manual Login (multiple sessions)
+
+> Not sure if manual login can pass cloudflare protection, but it should work for trusted IPs.
+> If this is not working for you, please try use cookies.
 
 If you don't want to use cookies, you can log in manually, and the browser will save the cookies for you.
 To do this, you need to use `-n <number>` option to set the number of sessions you want to use.
@@ -76,9 +85,9 @@ For example, if you want to use 2 sessions, run the following command:
 
 Then, there will be 2 browser windows opened, and you need to log in to each of them. After logging in, the cookies will be saved to `userdata` folder automatically.
 
-### Once you logged in (manually or using cookies)
+### Once You Logged in (manually or using cookies)
 
-In the future, you can start the proxy without the `-n` or `-c` option, and it will use the saved user data.
+Afterwards, you can start the proxy without the `-n` or `-c` option, and it will use the saved user data.
 
 ## Limitations
 

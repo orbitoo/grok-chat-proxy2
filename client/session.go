@@ -94,7 +94,9 @@ func initSession(id int, headless bool) (*Session, error) {
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
 		chromedp.UserDataDir(userDataDir),
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.Flag("window-size", "1920,1080"),
+		chromedp.Flag("lang", "en-US"),
 	}
 	if headless {
 		allocOpts = append(allocOpts, chromedp.Headless)
