@@ -219,7 +219,7 @@ var (
 	grokDeeperSearchButtonSelector = `div[aria-label="DeeperSearch"]`
 )
 
-func (s *Session) sendPrompt(model string, prompt *string, filename *string, private bool, cancelListen context.CancelFunc) error {
+func (s *Session) sendPrompt(model string, prompt *string, filename *string, private bool, cancelListen context.CancelFunc, listenCtx context.Context) error {
 	jsonPrompt, err := json.Marshal(*prompt)
 	if err != nil {
 		log.Printf("Failed to marshal prompt: %v", err)
@@ -262,8 +262,11 @@ func (s *Session) sendPrompt(model string, prompt *string, filename *string, pri
 	}
 	tasks = append(tasks, chromedp.WaitEnabled(grokSendButtonSelector, chromedp.ByQuery))
 	tasks = append(tasks, chromedp.EvaluateAsDevTools(clickSendButton, nil))
-	err = chromedp.Run(*s.ctx, tasks)
-	if err != nil {
+	ch := make(chan error, 1)
+	go func() {
+		ch <- chromedp.Run(listenCtx, tasks)
+	}()
+	if err := <-ch; err != nil {
 		log.Printf("Failed to send keys: %v", err)
 		cancelListen()
 		return err
@@ -411,7 +414,7 @@ func (s *Session) SendMessage(model string, prompt *string, filename *string, pr
 		err := s.listenForResponse(model, responseChan, listenCtx)
 		ch <- err
 	}()
-	err = s.sendPrompt(model, prompt, filename, private, cancelListen)
+	err = s.sendPrompt(model, prompt, filename, private, cancelListen, listenCtx)
 	if err != nil {
 		log.Printf("Failed to send prompt: %v", err)
 		return err

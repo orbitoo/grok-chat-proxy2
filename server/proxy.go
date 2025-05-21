@@ -106,24 +106,34 @@ func processStreamChunk(responseChan chan string, requestID string, model string
 			first = false
 			chunk := utils.BuildChunkStart(delta, requestID, model)
 			if err := sendChunk(w, flusher, chunk); err != nil {
+				log.Printf("Failed to send chunk: %v", err)
 				done <- false
 				return
 			}
 		} else {
 			chunk := utils.BuildChunk(delta, requestID, model)
 			if err := sendChunk(w, flusher, chunk); err != nil {
+				log.Printf("Failed to send chunk: %v", err)
 				done <- false
 				return
 			}
 		}
 	}
+	if !first {
+		log.Printf("Failed getting response from Grok")
+		done <- false
+		return
+	}
 	finishChunk := utils.BuildChunkFinish(requestID, model)
 	if err := sendChunk(w, flusher, finishChunk); err != nil {
+		log.Printf("Failed to send chunk: %v", err)
 		done <- false
 		return
 	}
 	if err := endStream(w, flusher); err != nil {
-		log.Println(err)
+		log.Printf("Failed to send chunk: %v", err)
+		done <- false
+		return
 	}
 	log.Println("Finished sending response")
 	done <- true
