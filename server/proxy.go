@@ -83,6 +83,7 @@ func ChatCompletionHandler(w http.ResponseWriter, r *http.Request) {
 	var allocErr error
 	var cancelFunc context.CancelFunc
 	if len(prompt) > MAX_PROMPT_LENGTH {
+		prompt = ""
 		cancelFunc, allocErr = callGrokUsingFile(modelName, &prompt, filepath, responseChan)
 	} else {
 		cancelFunc, allocErr = callGrok(modelName, &prompt, responseChan)
